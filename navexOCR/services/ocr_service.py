@@ -3,7 +3,6 @@ import io
 import fitz
 
 from PIL import Image
-from paddleocr import PaddleOCR
 
 from navexOCR.config import (
     DET_MODEL_DIR,
@@ -40,20 +39,31 @@ print("CLS_MODEL_DIR =", CLS_MODEL_DIR)
 # LOAD OCR
 # =========================================================
 
-ocr = PaddleOCR(
+from paddleocr import PaddleOCR
+from navexOCR.logger import get_logger
+import threading
 
-    use_angle_cls=True,
+log = get_logger(__name__)
 
-    lang="en",
-
-    det_model_dir=DET_MODEL_PATH,
-
-    rec_model_dir=REC_MODEL_PATH,
-
-    cls_model_dir=CLS_MODEL_PATH,
-
-    use_gpu=False
-)
+# Create a single global PaddleOCR instance at import time so models are loaded once.
+# This matches the user's requirement to load models globally.
+try:
+    ocr = PaddleOCR(
+        use_angle_cls=True,
+        lang="en",
+        det_model_dir=DET_MODEL_PATH,
+        rec_model_dir=REC_MODEL_PATH,
+        cls_model_dir=CLS_MODEL_PATH,
+        use_gpu=False,
+    )
+    log.info("PaddleOCR model loaded globally")
+except Exception:
+    log.exception("Failed to initialize global PaddleOCR instance")
+    ocr = None
+# Lock to serialize access to the global PaddleOCR instance. Paddle's
+# runtime can raise 'Tensor holds no memory' when called concurrently
+# from multiple threads; serializing calls avoids that.
+_ocr_lock = threading.Lock()
 # =========================================================
 # CREATE SEARCHABLE PDF
 # =========================================================
@@ -91,8 +101,17 @@ def create_searchable_pdf(input_pdf_path=None, output_pdf_path=None, input_pdf_b
 
         arr = np.array(image)
 
-        # run OCR on numpy array directly
-        result = ocr.ocr(arr, cls=True)
+        # run OCR on numpy array using the global OCR instance
+        if ocr is None:
+            raise RuntimeError("PaddleOCR is not initialized")
+        try:
+            # serialize calls to the PaddleOCR instance to avoid
+            # concurrent runtime issues in paddle/pdphi
+            with _ocr_lock:
+                result = ocr.ocr(arr, cls=True)
+        except Exception:
+            log.exception("PaddleOCR inference failed")
+            raise
 
         pdf_page = output_doc.new_page(
             width=page.rect.width,

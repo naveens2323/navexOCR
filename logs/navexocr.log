@@ -1,0 +1,10 @@
+2026-05-11 10:20:40,945 INFO navexOCR.services.ocr_service: PaddleOCR model loaded globally
+2026-05-11 10:20:41,645 INFO navexOCR.ocr_threadpool: Initialized thread pool with workers=8
+2026-05-11 10:20:41,645 INFO navexOCR.routes.convert: Using thread-pool OCR worker
+2026-05-11 10:20:41,668 INFO navexOCR.services.cleanup_service: Temp sweeper started: scanning C:\Users\INTERN~1\AppData\Local\Temp\navexocr_temp every 60s, TTL=10m
+2026-05-11 10:20:41,669 INFO navexOCR.services.cleanup_service: Cleanup worker started
+2026-05-11 10:20:41,669 INFO navexOCR.main: Temp sweeper started on startup
+2026-05-11 10:20:41,676 INFO navexOCR.services.cleanup_service: Removed folder: C:\Users\INTERN~1\AppData\Local\Temp\navexocr_temp\navexocr_hx961ifr (attempt 1)
+2026-05-11 10:20:41,677 INFO navexOCR.services.cleanup_service: Removed old temp dir: C:\Users\INTERN~1\AppData\Local\Temp\navexocr_temp\navexocr_hx961ifr
+2026-05-11 10:20:57,209 INFO navexOCR.routes.convert: Request: 1 files uploaded; concurrency=1; use_process_ocr=False
+2026-05-11 10:21:58,088 INFO navexOCR.routes.convert: Request: 2 files uploaded; concurrency=2; use_process_ocr=False
