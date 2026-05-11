@@ -31,16 +31,40 @@ def _remove_old_dirs(ttl_minutes=10):
     try:
         for name in os.listdir(TEMP_DIR):
             path = os.path.join(TEMP_DIR, name)
-            if not os.path.isdir(path):
+            # include tombstoned dirs (ending with .delete_me) and skip loose marker files
+            if not (os.path.isdir(path) or name.endswith('.delete_me')):
+                # if it's a tombstone marker file created when rename failed, try removing the base dir
+                if name.endswith('.delete_marker'):
+                    # marker files point to a dir that couldn't be renamed; attempt removal of the target
+                    try:
+                        with open(path, 'r', encoding='utf-8') as fh:
+                            target = fh.read().strip()
+                        if target and os.path.exists(target):
+                            try:
+                                _robust_rmtree(target)
+                            except Exception:
+                                log.exception(f"Failed to remove target from marker: {target}")
+                        # remove the marker file itself
+                        try:
+                            os.remove(path)
+                        except Exception:
+                            log.exception(f"Failed to remove marker file: {path}")
+                    except Exception:
+                        log.exception(f"Failed to read/delete marker file: {path}")
                 continue
             try:
-                mtime = datetime.utcfromtimestamp(os.path.getmtime(path))
+                # For tombstoned dirs (ending with .delete_me) use the folder mtime if present
+                check_path = path
+                if name.endswith('.delete_me') and not os.path.exists(path):
+                    # path may not exist if rename previously failed; skip
+                    continue
+                mtime = datetime.utcfromtimestamp(os.path.getmtime(check_path))
                 if now - mtime > ttl:
                     try:
-                        _robust_rmtree(path)
-                        removed.append(path)
+                        _robust_rmtree(check_path)
+                        removed.append(check_path)
                     except Exception:
-                        log.exception(f"Failed to remove temp dir: {path}")
+                        log.exception(f"Failed to remove temp dir: {check_path}")
             except Exception:
                 log.exception(f"Failed to stat temp dir: {path}")
     except Exception:
@@ -98,6 +122,16 @@ def _robust_rmtree(path, max_attempts=3):
         try:
             os.rename(path, tomb)
             log.warning(f"Renamed stuck temp dir to tombstone: {tomb}")
+        except PermissionError:
+            # If rename is denied (e.g., file handles still open), create a lightweight marker
+            try:
+                parent = os.path.dirname(path)
+                marker = os.path.join(parent, f"{os.path.basename(path)}.delete_marker")
+                with open(marker, 'w', encoding='utf-8') as fh:
+                    fh.write(path)
+                log.warning(f"Could not rename stuck temp dir; created marker: {marker}")
+            except Exception:
+                log.exception(f"Failed to create tombstone marker for stuck temp dir: {path}")
         except Exception:
             log.exception(f"Failed to rename stuck temp dir: {path}")
     except Exception:
