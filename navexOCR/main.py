@@ -9,6 +9,7 @@ import os
 log = get_logger(__name__)
 
 import pyfiglet
+from fastapi import FastAPI
 
 
 banner = pyfiglet.figlet_format(
@@ -16,14 +17,16 @@ banner = pyfiglet.figlet_format(
     font="slant"
 )
 
+
 print(banner)
+print("Author : Naveen S")
+print("Email  : ansl6283@gmail.com")
+
+
 
 
 app = FastAPI(
-
-    title="navexOCR API",
-
-    version="1.0.0"
+    title="navexOCR API"
 )
 
 app.include_router(router)

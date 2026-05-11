@@ -51,12 +51,7 @@ def worker_main(pdf_file, output_docx, temp_dir):
             w.DisplayAlerts = 0
             try:
                 hwnd = getattr(w, 'Hwnd', None)
-                if hwnd:
-                    try:
-                        _tid, _pid = win32process.GetWindowThreadProcessId(hwnd)
-                        log.info(f"Worker started Word pid={_pid}")
-                    except Exception:
-                        pass
+                # Do not log window handle/pid to avoid noisy output
             except Exception:
                 pass
             return w
@@ -77,7 +72,7 @@ def worker_main(pdf_file, output_docx, temp_dir):
                         break
                     except pywintypes.com_error as e:
                         code = e.args[0] if e.args else None
-                        log.warning(f"Open page COM error {code} (attempt {attempt+1})")
+                        # Open page COM error: suppress verbose warning
                         if code == -2147418111 and attempt < 7:
                             for _ in range(12):
                                 pythoncom.PumpWaitingMessages()
@@ -87,7 +82,7 @@ def worker_main(pdf_file, output_docx, temp_dir):
                         if code in (-2147220995, -2147023174, -2147417836) and attempt < 7:
                             # restart Word instance and retry
                             try:
-                                log.warning("Restarting Word due to COM open error")
+                                # Restarting Word due to COM open error
                                 try:
                                     if word:
                                         word.Quit()
@@ -111,9 +106,66 @@ def worker_main(pdf_file, output_docx, temp_dir):
                 if doc is None:
                     raise Exception(f"Failed to open page PDF in Word: {page_pdf}")
 
+                # Apply the same formatting and scaling used in the in-process worker
+                try:
+                    CM_TO_POINTS = 28.35
+                    MARGIN = 0.5 * CM_TO_POINTS
+
+                    for i in range(1, doc.Sections.Count + 1):
+                        try:
+                            ps = doc.Sections(i).PageSetup
+                            ps.TopMargin = MARGIN
+                            ps.BottomMargin = MARGIN
+                            ps.LeftMargin = MARGIN
+                            ps.RightMargin = MARGIN
+                        except Exception:
+                            pass
+
+                    for p in doc.Paragraphs:
+                        try:
+                            p.Format.SpaceBefore = 0
+                            p.Format.SpaceAfter = 0
+                            p.Format.LineSpacingRule = 0
+                        except Exception:
+                            pass
+
+                    for t in doc.Tables:
+                        try:
+                            t.AutoFitBehavior(2)
+                            t.AllowAutoFit = True
+                            t.Rows.AllowBreakAcrossPages = False
+                        except Exception:
+                            pass
+
+                    doc.Repaginate()
+                    time.sleep(1)
+
+                    scale = 100
+                    min_scale = 75
+                    wdStatisticPages = 2
+                    while scale >= min_scale:
+                        try:
+                            pages_now = doc.ComputeStatistics(wdStatisticPages)
+                        except Exception:
+                            pages_now = 1
+                        if pages_now <= 1:
+                            break
+                        try:
+                            doc.Content.Font.Scaling = scale
+                            doc.Repaginate()
+                        except Exception:
+                            pass
+                        time.sleep(0.5)
+                        scale -= 2
+
+                    # now perform SaveAs with retries
+                    save_ok = False
+                    
+                except Exception:
+                    log.exception(f"Failed to apply formatting to page {page_num}")
+                    # continue to save/close attempt even if formatting failed
                 # Wrap per-page save in a try/finally so we always attempt to close the doc
                 try:
-                    # minor formatting adjustments omitted for brevity
                     save_ok = False
                     for s_attempt in range(6):
                         try:
@@ -122,7 +174,7 @@ def worker_main(pdf_file, output_docx, temp_dir):
                             break
                         except pywintypes.com_error as e:
                             scode = e.args[0] if e.args else None
-                            log.warning(f"SaveAs COM error {scode} (attempt {s_attempt+1})")
+                            # SaveAs COM error: suppress verbose warning
                             if scode == -2147418111 and s_attempt < 5:
                                 for _ in range(12):
                                     pythoncom.PumpWaitingMessages()
@@ -132,7 +184,7 @@ def worker_main(pdf_file, output_docx, temp_dir):
                             if scode in (-2147220995, -2147023174, -2147417836) and s_attempt < 5:
                                 # restart Word and retry the page save
                                 try:
-                                    log.warning("Restarting Word due to SaveAs COM error")
+                                    # Restarting Word due to SaveAs COM error
                                     try:
                                         if word:
                                             word.Quit()
@@ -168,7 +220,7 @@ def worker_main(pdf_file, output_docx, temp_dir):
                                 doc.Close(False)
                             except pywintypes.com_error as e_close:
                                 ccode = e_close.args[0] if e_close.args else None
-                                log.warning(f"doc.Close COM error {ccode}; pumping and retrying")
+                                # doc.Close COM error; will pump messages and retry
                                 for _ in range(8):
                                     pythoncom.PumpWaitingMessages()
                                     time.sleep(0.05)

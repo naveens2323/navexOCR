@@ -2,7 +2,9 @@ from setuptools import setup, find_packages
 
 setup(
     name="navexOCR",
-    version="1.0.11",
+    version="1.1.1",
+    author="Naveen S",
+    author_email="ansl6283@gmail.com",
 
     packages=find_packages(),
 
@@ -31,7 +33,5 @@ setup(
         "numpy==1.26.4",
         "pyfiglet==1.0.4",
     ],
-
-    author="Naveen",
     description="Advanced OCR PDF to Word Engine",
 )
